@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Многофайловый HTML редактор с переименованием</title>
+
+    <!-- CodeMirror -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/idea.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/eclipse.min.css">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f5f7fb;
+            height: 100vh;
+            overflow: hidden;
+            color: #1e293b;
+        }
+
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #f5f7fb;
+            padding: 12px;
+        }
+
+        /* Панель инструментов */
+        .toolbar {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            padding: 12px 20px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 16px;
+            border: 1px solid rgba(0,0,0,0.03);
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8fafc;
+            padding: 6px 12px;
+            border-radius: 40px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .toolbar select, .toolbar button, .toolbar .checkbox-label {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .toolbar select {
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 30px;
+            padding: 6px 16px;
+            color: #1e293b;
+            cursor: pointer;
+            outline: none;
+            transition: border 0.2s;
+        }
+        .toolbar select:hover {
+            border-color: #94a3b8;
+        }
+
+        .toolbar button {
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 30px;
+            padding: 6px 18px;
+            color: #1e293b;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .toolbar button.primary {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+            box-shadow: 0 4px 8px rgba(59,130,246,0.3);
+        }
+        .toolbar button.primary:hover {
+            background: #2563eb;
+            border-color: #2563eb;
+            transform: translateY(-1px);
+        }
+        .toolbar button.outline {
+            background: transparent;
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+        .toolbar button.outline:hover {
+            background: #eef2ff;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            color: #334155;
+        }
+        .checkbox-label input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .toolbar input[type="range"] {
+            width: 100px;
+            background: transparent;
+        }
+
+        .file-info {
+            font-size: 12px;
+            color: #64748b;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Основная область (редактор + вывод) */
+        .main {
+            display: flex;
+            gap: 12px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Панель редактора */
+        .editor-panel {
+            flex: 1;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.02);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #e9eef2;
+        }
+
+        /* Вкладки файлов */
+        .file-tabs {
+            display: flex;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 0 8px;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            align-items: center;
+        }
+
+        .file-tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            user-select: none;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .file-tab:hover {
+            color: #3b82f6;
+            background: #f1f5f9;
+        }
+
+        .file-tab.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+            background: transparent;
+        }
+
+        .file-tab .close-btn {
+            font-size: 14px;
+            color: #94a3b8;
+            transition: color 0.2s;
+            margin-left: 4px;
+        }
+        .file-tab .close-btn:hover {
+            color: #ef4444;
+        }
+
+        .add-tab {
+            padding: 10px 12px;
+            color: #3b82f6;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 2px solid transparent;
+        }
+        .add-tab:hover {
+            color: #2563eb;
+            background: #f1f5f9;
+        }
+
+        /* Поле для переименования внутри вкладки */
+        .rename-input {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 2px 4px;
+            border: 1px solid #3b82f6;
+            border-radius: 4px;
+            outline: none;
+            width: 120px;
+            background: white;
+            color: #1e293b;
+        }
+
+        .CodeMirror {
+            flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 15px;
+            line-height: 1.6;
+            background: #fcfcfd;
+        }
+        .CodeMirror-gutters {
+            background: #f1f5f9;
+            border-right: 1px solid #e2e8f0;
+        }
+        .CodeMirror-linenumber {
+            color: #64748b;
+        }
+
+        .status-bar {
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            padding: 8px 16px;
+            font-size: 12px;
+            color: #475569;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Панель вывода */
+        .output-panel {
+            flex: 1;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.02);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #e9eef2;
+        }
+
+        .output-header {
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: #3b82f6;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        #preview-iframe {
+            flex: 1;
+            width: 100%;
+            border: none;
+            background: white;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Панель инструментов -->
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <select id="theme-selector">
+                    <option value="idea">Idea (светлая)</option>
+                    <option value="material-darker">Material Darker</option>
+                    <option value="eclipse">Eclipse</option>
+                </select>
+            </div>
+
+            <div class="toolbar-group">
+                <button id="run-btn" class="primary">▶ Запустить</button>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="auto-run"> Авто
+                </label>
+            </div>
+
+            <div class="toolbar-group">
+                <button id="new-btn" class="outline">➕ Новый проект</button>
+                <button id="save-btn">💾 Сохранить</button>
+                <button id="load-btn">📂 Загрузить</button>
+                <input type="file" id="file-input" accept=".json" style="display: none;">
+                <span id="file-name" class="file-info"></span>
+            </div>
+
+            <div class="toolbar-group">
+                <span style="font-size:13px;">🔤 Размер</span>
+                <input type="range" id="font-size-slider" min="10" max="24" value="15" step="1">
+            </div>
+        </div>
+
+        <!-- Редактор и вывод -->
+        <div class="main">
+            <div class="editor-panel">
+                <!-- Вкладки файлов -->
+                <div class="file-tabs" id="file-tabs-container">
+                    <!-- Вкладки будут добавляться динамически -->
+                    <div class="add-tab" id="add-tab-btn" title="Добавить файл"><i class="fas fa-plus"></i></div>
+                </div>
+                <textarea id="code-editor"></textarea>
+                <div class="status-bar">
+                    <span id="cursor-pos">Стр 1, Кол 1</span>
+                    <span id="active-file-name">index.html</span>
+                </div>
+            </div>
+
+            <div class="output-panel">
+                <div class="output-header">📦 Предпросмотр</div>
+                <iframe id="preview-iframe"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- CodeMirror и режимы -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+
+    <script>
+        (function() {
+            // DOM элементы
+            const themeSelector = document.getElementById('theme-selector');
+            const runBtn = document.getElementById('run-btn');
+            const autoRunCheck = document.getElementById('auto-run');
+            const newBtn = document.getElementById('new-btn');
+            const saveBtn = document.getElementById('save-btn');
+            const loadBtn = document.getElementById('load-btn');
+            const fileInput = document.getElementById('file-input');
+            const fileNameSpan = document.getElementById('file-name');
+            const fontSizeSlider = document.getElementById('font-size-slider');
+            const previewIframe = document.getElementById('preview-iframe');
+            const cursorPosSpan = document.getElementById('cursor-pos');
+            const activeFileNameSpan = document.getElementById('active-file-name');
+            const tabsContainer = document.getElementById('file-tabs-container');
+            const addTabBtn = document.getElementById('add-tab-btn');
+
+            let editor;
+            let currentFileId = null;
+            let autoRunTimer = null;
+
+            // Структура файлов: массив объектов { id, name, content }
+            let files = [];
+            let nextId = 1;
+
+            // --- Вспомогательные функции ---
+
+            function generateDefaultName() {
+                return `file${files.length + 1}.html`;
+            }
+
+            function getDefaultContent() {
+                return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Новая страница</title>
+</head>
+<body>
+    <h1>Привет, это новая страница!</h1>
+</body>
+</html>`;
+            }
+
+            function initDefaultFiles() {
+                files = [
+                    { id: nextId++, name: 'index.html', content: `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Главная страница</title>
+    <style>
+        body { font-family: Arial; background: #f0f8ff; padding: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Добро пожаловать!</h1>
+    <p>Это главная страница проекта.</p>
+    <script>
+        console.log('Главная страница загружена');
+    <\/script>
+</body>
+</html>` }
+                ];
+                currentFileId = files[0].id;
+            }
+
+            // Переименование файла
+            function renameFile(fileId, newName) {
+                const file = files.find(f => f.id === fileId);
+                if (!file) return false;
+
+                // Проверка на пустое имя
+                if (!newName.trim()) {
+                    alert('Имя файла не может быть пустым');
+                    return false;
+                }
+
+                // Проверка на уникальность имени (можно разрешить дубликаты, но лучше предупредить)
+                const exists = files.some(f => f.id !== fileId && f.name === newName.trim());
+                if (exists) {
+                    alert('Файл с таким именем уже существует');
+                    return false;
+                }
+
+                file.name = newName.trim();
+                // Обновляем отображение активного файла, если это текущий
+                if (fileId === currentFileId) {
+                    activeFileNameSpan.textContent = file.name;
+                }
+                renderTabs();
+                return true;
+            }
+
+            // Создание поля для ввода нового имени (inline rename)
+            function startRename(fileId, tabElement) {
+                const file = files.find(f => f.id === fileId);
+                if (!file) return;
+
+                // Сохраняем текущее содержимое таба
+                const oldName = file.name;
+                const tabContent = tabElement;
+
+                // Создаём input
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = oldName;
+                input.className = 'rename-input';
+                input.setAttribute('data-file-id', fileId);
+
+                // Очищаем таб и вставляем input
+                tabContent.innerHTML = '';
+                tabContent.appendChild(input);
+                input.focus();
+                input.select();
+
+                // Обработчики завершения редактирования
+                function finishRename(confirm) {
+                    const newName = input.value.trim();
+                    if (confirm && newName && newName !== oldName) {
+                        renameFile(fileId, newName);
+                    } else {
+                        // Отмена - возвращаем старое имя
+                        renderTabs(); // перерисовка восстановит старый вид
+                    }
+                }
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        finishRename(true);
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        finishRename(false);
+                    }
+                });
+
+                input.addEventListener('blur', () => {
+                    finishRename(true); // при потере фокуса сохраняем
+                });
+
+                // Останавливаем всплытие кликов на input, чтобы не переключать вкладку
+                input.addEventListener('click', (e) => e.stopPropagation());
+            }
+
+            // Отрисовка вкладок
+            function renderTabs() {
+                // Удаляем все вкладки, кроме кнопки добавления
+                const tabs = Array.from(tabsContainer.children);
+                tabs.forEach(tab => {
+                    if (tab !== addTabBtn) tab.remove();
+                });
+
+                // Создаём вкладки для каждого файла
+                files.forEach(file => {
+                    const tab = document.createElement('div');
+                    tab.className = `file-tab ${file.id === currentFileId ? 'active' : ''}`;
+                    tab.dataset.fileId = file.id;
+                    tab.innerHTML = `${file.name} <span class="close-btn" data-file-id="${file.id}"><i class="fas fa-times"></i></span>`;
+
+                    // Двойной клик для переименования
+                    tab.addEventListener('dblclick', (e) => {
+                        e.stopPropagation();
+                        // Не запускать переименование при клике на крестик
+                        if (e.target.classList.contains('close-btn') || e.target.closest('.close-btn')) return;
+                        startRename(file.id, tab);
+                    });
+
+                    // Контекстное меню (правый клик) для переименования
+                    tab.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Не показывать меню при клике на крестик
+                        if (e.target.classList.contains('close-btn') || e.target.closest('.close-btn')) return;
+                        // Простое контекстное меню с пунктом "Переименовать"
+                        const menu = document.createElement('div');
+                        menu.style.position = 'fixed';
+                        menu.style.left = e.pageX + 'px';
+                        menu.style.top = e.pageY + 'px';
+                        menu.style.background = 'white';
+                        menu.style.border = '1px solid #ccc';
+                        menu.style.borderRadius = '8px';
+                        menu.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                        menu.style.zIndex = '1000';
+                        menu.style.padding = '4px 0';
+                        const item = document.createElement('div');
+                        item.textContent = 'Переименовать';
+                        item.style.padding = '8px 16px';
+                        item.style.cursor = 'pointer';
+                        item.style.fontSize = '13px';
+                        item.addEventListener('click', () => {
+                            document.body.removeChild(menu);
+                            startRename(file.id, tab);
+                        });
+                        menu.appendChild(item);
+                        document.body.appendChild(menu);
+
+                        // Закрыть меню при клике вне его
+                        const closeMenu = (ev) => {
+                            if (!menu.contains(ev.target)) {
+                                document.body.removeChild(menu);
+                                document.removeEventListener('click', closeMenu);
+                            }
+                        };
+                        setTimeout(() => {
+                            document.addEventListener('click', closeMenu);
+                        }, 0);
+                    });
+
+                    // Переключение по клику на вкладку (но не на крестик)
+                    tab.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('close-btn') || e.target.closest('.close-btn')) return;
+                        switchToFile(file.id);
+                    });
+
+                    // Обработчик удаления на крестик
+                    const closeBtn = tab.querySelector('.close-btn');
+                    closeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteFile(file.id);
+                    });
+
+                    // Вставляем перед кнопкой добавления
+                    tabsContainer.insertBefore(tab, addTabBtn);
+                });
+            }
+
+            // Переключение на файл
+            function switchToFile(fileId) {
+                if (fileId === currentFileId) return;
+
+                // Сохраняем текущий код
+                if (currentFileId !== null) {
+                    const currentFile = files.find(f => f.id === currentFileId);
+                    if (currentFile) {
+                        currentFile.content = editor.getValue();
+                    }
+                }
+
+                const newFile = files.find(f => f.id === fileId);
+                if (!newFile) return;
+
+                currentFileId = fileId;
+                editor.setValue(newFile.content);
+                activeFileNameSpan.textContent = newFile.name;
+
+                renderTabs();
+
+                if (autoRunCheck.checked) runCode();
+            }
+
+            // Добавление нового файла
+            function addNewFile() {
+                const newName = generateDefaultName();
+                const newFile = {
+                    id: nextId++,
+                    name: newName,
+                    content: getDefaultContent()
+                };
+                files.push(newFile);
+                renderTabs();
+                switchToFile(newFile.id);
+            }
+
+            // Удаление файла
+            function deleteFile(fileId) {
+                if (files.length <= 1) {
+                    alert('Нельзя удалить последний файл.');
+                    return;
+                }
+
+                if (!confirm('Удалить файл?')) return;
+
+                const index = files.findIndex(f => f.id === fileId);
+                if (index === -1) return;
+
+                files.splice(index, 1);
+
+                if (fileId === currentFileId) {
+                    currentFileId = files[0].id;
+                    editor.setValue(files[0].content);
+                    activeFileNameSpan.textContent = files[0].name;
+                }
+
+                renderTabs();
+            }
+
+            // Запуск предпросмотра
+            function runCode() {
+                const activeFile = files.find(f => f.id === currentFileId);
+                if (!activeFile) return;
+                const doc = previewIframe.contentWindow.document;
+                doc.open();
+                doc.write(activeFile.content);
+                doc.close();
+            }
+
+            // Обработка изменения кода
+            function handleCodeChange() {
+                if (currentFileId !== null) {
+                    const currentFile = files.find(f => f.id === currentFileId);
+                    if (currentFile) {
+                        currentFile.content = editor.getValue();
+                    }
+                }
+
+                if (autoRunCheck.checked) {
+                    if (autoRunTimer) clearTimeout(autoRunTimer);
+                    autoRunTimer = setTimeout(runCode, 300);
+                }
+            }
+
+            function updateCursor() {
+                const pos = editor.getCursor();
+                cursorPosSpan.textContent = `Стр ${pos.line + 1}, Кол ${pos.ch + 1}`;
+            }
+
+            // Сохранение проекта
+            function saveProject() {
+                const project = {
+                    files: files.map(f => ({ name: f.name, content: f.content }))
+                };
+                const json = JSON.stringify(project, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'project.json';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }
+
+            // Загрузка проекта
+            function loadProject(file) {
+                if (!file) return;
+                fileNameSpan.textContent = file.name;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const project = JSON.parse(e.target.result);
+                        if (Array.isArray(project.files) && project.files.length > 0) {
+                            files = project.files.map((f, idx) => ({
+                                id: nextId++,
+                                name: f.name || `file${idx+1}.html`,
+                                content: f.content || getDefaultContent()
+                            }));
+                            currentFileId = files[0].id;
+                            editor.setValue(files[0].content);
+                            activeFileNameSpan.textContent = files[0].name;
+                            renderTabs();
+                            if (autoRunCheck.checked) runCode();
+                        } else {
+                            alert('Неверный формат проекта: отсутствует массив files');
+                        }
+                    } catch (err) {
+                        alert('Ошибка загрузки файла: неверный JSON');
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            // Новый проект
+            function newProject() {
+                if (confirm('Создать новый проект? Все несохранённые данные будут потеряны.')) {
+                    nextId = 1;
+                    initDefaultFiles();
+                    editor.setValue(files[0].content);
+                    currentFileId = files[0].id;
+                    activeFileNameSpan.textContent = files[0].name;
+                    renderTabs();
+                    fileNameSpan.textContent = '';
+                    if (autoRunCheck.checked) runCode();
+                }
+            }
+
+            // Инициализация редактора
+            function initEditor() {
+                editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+                    mode: 'htmlmixed',
+                    theme: themeSelector.value,
+                    lineNumbers: true,
+                    autoCloseTags: true,
+                    matchBrackets: true,
+                    indentUnit: 4,
+                    tabSize: 4,
+                    lineWrapping: true
+                });
+
+                initDefaultFiles();
+                editor.setValue(files[0].content);
+                currentFileId = files[0].id;
+                activeFileNameSpan.textContent = files[0].name;
+                renderTabs();
+
+                editor.on('change', handleCodeChange);
+                editor.on('cursorActivity', updateCursor);
+                updateCursor();
+
+                fontSizeSlider.addEventListener('input', (e) => {
+                    document.querySelector('.CodeMirror').style.fontSize = e.target.value + 'px';
+                });
+
+                themeSelector.addEventListener('change', (e) => {
+                    editor.setOption('theme', e.target.value);
+                });
+            }
+
+            // Обработчики событий
+            addTabBtn.addEventListener('click', addNewFile);
+            runBtn.addEventListener('click', runCode);
+            autoRunCheck.addEventListener('change', () => {
+                if (autoRunCheck.checked) runCode();
+            });
+            saveBtn.addEventListener('click', saveProject);
+            loadBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length) loadProject(e.target.files[0]);
+                fileInput.value = '';
+            });
+            newBtn.addEventListener('click', newProject);
+
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    runCode();
+                }
+            });
+
+            initEditor();
+        })();
+    </script>
+</body>
+</html>
